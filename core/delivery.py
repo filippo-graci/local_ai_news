@@ -660,6 +660,11 @@ def deploy_to_cloudflare(output_dir: Path, config: dict) -> bool:
         env["CLOUDFLARE_API_TOKEN"] = api_token
 
     cmd = ["wrangler", "pages", "deploy", str(output_dir), "--project-name", project_name]
+    # Without --branch, wrangler uses the git branch of the checkout; if that isn't the
+    # project's production branch, every deploy silently lands on a Preview URL.
+    production_branch = (config.get("cloudflare") or {}).get("production_branch")
+    if production_branch:
+        cmd += ["--branch", production_branch]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=WRANGLER_TIMEOUT, env=env, cwd=PROJECT_ROOT)
     except FileNotFoundError:

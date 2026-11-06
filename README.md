@@ -60,8 +60,9 @@ venv/bin/python main.py --dry-run --skip-gpu-check
 ### Publishing to Cloudflare Pages (optional)
 
 1. `wrangler login`, then create the project:
-   `wrangler pages project create morning-brief`, and set the same name as
-   `cloudflare.project_name` in `config.yaml`.
+   `wrangler pages project create morning-brief --production-branch main`, and
+   set the same name and branch as `cloudflare.project_name` and
+   `cloudflare.production_branch` in `config.yaml`.
 2. For the like/dislike buttons: `wrangler kv namespace create VOTES`, paste
    the id into `wrangler.toml`, then set a secret key with
    `wrangler pages secret put VOTE_KEY --project-name morning-brief`. Put the site URL and the same key under

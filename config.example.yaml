@@ -14,6 +14,12 @@ cloudflare:
   # is left null.
   project_name: "morning-brief"
 
+  # The Pages project's production branch (set with --production-branch when
+  # creating it). Deploys go there; without it wrangler uses this checkout's
+  # git branch and, if that differs, publishes to a Preview URL instead of
+  # the live site.
+  production_branch: "main"
+
   # Optional. If set, exported as CLOUDFLARE_API_TOKEN for the wrangler
   # subprocess call -- lets the systemd-triggered run authenticate without
   # a browser. Leave null to rely on `wrangler login` (interactive OAuth,
