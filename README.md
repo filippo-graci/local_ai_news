@@ -5,8 +5,9 @@ models only. It reads news sites' RSS feeds, drops what the reader doesn't care
 about, merges duplicate stories, summarises each one, and publishes a dated
 page to Cloudflare Pages that can be installed on a phone.
 
-It ships configured for an **Italian reader following Italy and the world**
-(see [Personalising](#personalising)). The digest is written in Italian.
+It ships configured for an **Italian reader following Italy and the world**,
+with no sport and no gossip, only useful and interesting facts (see
+[Personalising](#personalising)). The digest is written in Italian.
 
 ## How it works
 
@@ -44,7 +45,7 @@ changed and why, with the measurements behind each change.
 ## Setup
 
 ```bash
-git clone https://github.com/Pantheon8699/local_ai_news.git ~/ai_news_pipeline
+git clone https://github.com/filippo-graci/local_ai_news.git ~/ai_news_pipeline
 cd ~/ai_news_pipeline
 python3 -m venv venv
 venv/bin/pip install -r requirements.txt
@@ -87,20 +88,37 @@ to be free (`gpu_guard` in `config.yaml`). Logs go to `logs/run_YYYY-MM-DD.log`.
 
 ## Personalising
 
-The shipped configuration is the **Italy / world preset**. These are the files
-that encode it:
+The shipped configuration is the **Italy / world preset**, written down in
+`premade_interest_profile.md`. To build a different one, fill in the blank
+checklist in `interest_profile.md` with the reader's own preferences, then
+rewrite `prompts/interest_filter.txt` from it. These are the files involved:
 
 | File | What it decides | To change it |
 |---|---|---|
 | `sources.json` | Which feeds are read, grouped into five buckets. `lean` drives the L/CL/CR/R tags on political bullets, `market` (`IT` or `US/UK`) which outlets count as the same press, `limit` and `lookback_days` how many articles per feed and how far back. | Add or remove feeds. Keep the five bucket names unless you also change `ALLOWED_CATEGORIES` in `core/classification.py` and `prompts/classifier.txt`. |
-| `interest_profile.md` | Your interests as a y / m / n checklist. Read by you, not by the code. | Fill it in, then rewrite `prompts/interest_filter.txt` from it. That prompt is what the pipeline uses. |
-| `prompts/interest_filter.txt` | Keep/drop rules: always drop, keep only if major, always keep. | Mirror your checklist. Lists beat long explanations for the local model. |
+| `premade_interest_profile.md` | The default interests as a y / m / n checklist: no sport, no gossip, only useful and interesting facts about Italy and the world. Read by people, not by the code. | Nothing; it documents the default. |
+| `interest_profile.md` | The same checklist, blank. Read by people, not by the code. | Fill it in with the reader's own preferences, then rewrite `prompts/interest_filter.txt` from it. |
+| `prompts/interest_filter.txt` | Keep/drop rules: always drop, keep only if major, always keep. This prompt is what the pipeline uses; it ships matching the premade profile. | Mirror the filled-in checklist. Lists beat long explanations for the local model. |
 | `SECTIONS` in `core/interest.py`, `category_order` in `config.yaml`, `prompts/section.txt`, `prompts/section_country.txt` | The page's sections and their order. Politics is split by country (Italy, Europe, US, rest of the world), everything else by topic. | To centre another country, rename the first section and change the country mapping in `_country_section()` along with the two section prompts. |
 | `prompts/*.txt` | All prompts are in Italian, and summaries are written in Italian. | Translate the prompts to change the output language. Test on a few days of articles first: the local models are sensitive to wording (see `CHANGELOG.md`). |
 | `templates/digest.html`, `templates/manifest.json` | Page title ("Morning Brief"), styles, app icon. | Edit freely. |
 
 After changing a prompt, run with `--dry-run` and read `output/index.html`
 before letting the timer publish.
+
+## Part of a larger system
+
+Morning Brief is one of three projects that run on the same laptop and show up
+in the same phone app:
+
+| Project | Role |
+|---|---|
+| [learn-ai](https://github.com/filippo-graci/learn-ai) | Book pipeline and the Android app that shows all three; this digest appears in its News tab |
+| **local_ai_news** (this repo) | Morning Brief: the daily news digest |
+| [focus-cam](https://github.com/filippo-graci/focus-cam) | Webcam focus guard; its sessions feed the app's Stats tab |
+
+They share one 8 GB GPU. This pipeline owns 06:30 to 08:30, and learn-ai stops
+its own GPU jobs before the run. Any project can still be used alone.
 
 ## Responsible use
 
