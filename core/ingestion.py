@@ -82,6 +82,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -108,6 +109,14 @@ BACKOFF_BASE = 1.5  # seconds; attempt N waits BACKOFF_BASE ** N
 MIN_DOMAIN_DELAY = 1.0  # seconds between consecutive requests to the same domain
 DEFAULT_SECTION_LIMIT = 15
 DEFAULT_LOOKBACK_DAYS = 2  # today + yesterday; per-source override via sources.json "lookback_days"
+# Full text only (11 Nov 2026): paywalled articles gave the summarizer a title
+# and two lines. Publishers mark locked pages for search engines with
+# schema.org's isAccessibleForFree=false (Repubblica: every teaser of 0-51
+# words had it, every free article of 200+ words had "true"); anything else
+# under MIN_BODY_WORDS is a teaser or a failed extraction. ANSA's shortest real
+# stories are ~55 words.
+MIN_BODY_WORDS = 40
+PAYWALL_RE = re.compile(r'"isAccessibleForFree"\s*:\s*"?false', re.IGNORECASE)
 
 SOURCES_PATH = Path(__file__).resolve().parent.parent / "sources.json"
 
@@ -272,8 +281,6 @@ def _build_article(
             final_published_at = datetime.fromisoformat(extracted["date"])
         except ValueError:
             pass
-    if not body:
-        logger.warning("No body extracted for '%s' (%s) -- keeping title/link only", title, link)
     return {
         # "category" here is the SOURCE-BUCKET category from sources.json --
         # i.e. which feed this came from, not necessarily what the article
@@ -303,10 +310,18 @@ def _build_article(
 
 
 def _extract_article(fetcher: PoliteFetcher, url: str) -> dict | None:
+    """None when the page can't be fetched or is paywalled (see PAYWALL_RE)."""
     resp = fetcher.get(url)
     if resp is None:
         return None
+    if PAYWALL_RE.search(resp.text):
+        logger.info("Paywalled, skipping: %s", url)
+        return None
     return _run_trafilatura(resp.text, url)
+
+
+def has_full_text(article: dict) -> bool:
+    return len(article["body"].split()) >= MIN_BODY_WORDS
 
 
 def ingest_feed(
@@ -345,9 +360,16 @@ def ingest_feed(
     articles = []
     for published_at, title, link in candidates:
         extracted = _extract_article(fetcher, link)
-        articles.append(_build_article(category, source_name, title, link, published_at, extracted, lean, market))
+        article = _build_article(category, source_name, title, link, published_at, extracted, lean, market)
+        if has_full_text(article):
+            articles.append(article)
+        else:
+            logger.info("No full text (paywall, teaser or failed fetch), dropped: '%s' (%s)", title, link)
 
-    logger.info("%s: %d article(s) kept after date filter + extraction", source_name, len(articles))
+    logger.info(
+        "%s: %d article(s) kept after date filter + extraction (%d dropped without full text)",
+        source_name, len(articles), len(candidates) - len(articles),
+    )
     return articles
 
 

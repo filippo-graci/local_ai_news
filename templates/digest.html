@@ -179,6 +179,7 @@
     opacity: 0.45;
   }
   .vote button.on { opacity: 1; border-color: var(--accent); }
+  .ess-from { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 0.15rem; }
   .missing-note {
     margin: 1.5rem 1.25rem 0;
     padding: 0.85rem 1rem;
@@ -212,33 +213,67 @@ $missing_categories_html
 </footer>
 <script>
 // Like/dislike on each bullet -> POST /api/vote (functions/api/vote.js).
-// The pipeline reads the votes back every morning (core/interest.py).
+// Votes need the profile: log in once per browser/app (functions/api/profile.js,
+// a 1-year cookie), never a key per vote. The pipeline reads the votes back
+// every morning (core/interest.py).
 (function () {
   var votes = JSON.parse(localStorage.getItem("votes") || "{}");
+  var logged = false;
   function paint(li) {
     var v = votes[JSON.parse(li.dataset.urls)[0]];
-    li.querySelectorAll(".vote button").forEach(function (b) {
+    li.querySelectorAll(".vote button[data-v]").forEach(function (b) {
       b.classList.toggle("on", Number(b.dataset.v) === v);
     });
   }
   document.querySelectorAll("li[data-urls]").forEach(paint);
+
+  var profile = document.createElement("button");
+  profile.style.cssText = "margin-top:.5rem;background:none;border:1px solid var(--border);border-radius:999px;" +
+    "padding:.1rem .7rem;font-size:.8rem;color:var(--text-dim);cursor:pointer";
+  (document.querySelector("header") || document.body).appendChild(profile);
+  function render() { profile.textContent = logged ? "👤 Profilo · Esci" : "👤 Accedi per votare"; }
+  function api(method, body) {
+    return fetch("/api/profile", {method: method, credentials: "same-origin",
+      headers: {"content-type": "application/json"}, body: body ? JSON.stringify(body) : undefined});
+  }
+  function send(key) {
+    return api("POST", {key: key}).then(function (r) { logged = r.ok; render(); return r.ok; });
+  }
+  function login() {
+    var key = prompt("Password del profilo (votes.key in config.yaml):");
+    if (!key) return Promise.resolve(false);
+    return send(key).then(function (ok) { if (!ok) alert("Password errata."); return ok; });
+  }
+  profile.addEventListener("click", function () {
+    if (logged) api("DELETE").then(function () { logged = false; render(); });
+    else login();
+  });
+  render();
+  api("GET").then(function (r) { return r.json(); }).then(function (d) {
+    logged = !!d.logged;
+    render();
+    var old = localStorage.getItem("voteKey");  // the key pages used to keep here: log in with it once
+    localStorage.removeItem("voteKey");
+    if (old && !logged) send(old);
+  }).catch(function () {});
+
   document.addEventListener("click", function (e) {
-    var b = e.target.closest(".vote button");
+    var b = e.target.closest(".vote button[data-v]");
     if (!b) return;
     var li = b.closest("li"), urls = JSON.parse(li.dataset.urls), v = Number(b.dataset.v);
-    var key = localStorage.getItem("voteKey") || prompt("Chiave per votare (votes.key in config.yaml):");
-    if (!key) return;
-    fetch("/api/vote", {
-      method: "POST",
-      headers: {"x-key": key, "content-type": "application/json"},
-      body: JSON.stringify({urls: urls, v: v})
-    }).then(function (r) {
-      if (r.status === 401) { localStorage.removeItem("voteKey"); alert("Chiave errata."); return; }
-      if (!r.ok) throw new Error(r.status);
-      localStorage.setItem("voteKey", key);
-      urls.forEach(function (u) { votes[u] = v; });
-      localStorage.setItem("votes", JSON.stringify(votes));
-      paint(li);
+    (logged ? Promise.resolve(true) : login()).then(function (ok) {
+      if (!ok) return;
+      return fetch("/api/vote", {
+        method: "POST", credentials: "same-origin",
+        headers: {"content-type": "application/json"},
+        body: JSON.stringify({urls: urls, v: v})
+      }).then(function (r) {
+        if (r.status === 401) { logged = false; render(); alert("Sessione scaduta: accedi di nuovo."); return; }
+        if (!r.ok) throw new Error(r.status);
+        urls.forEach(function (u) { votes[u] = v; });
+        localStorage.setItem("votes", JSON.stringify(votes));
+        paint(li);
+      });
     }).catch(function () { alert("Voto non salvato."); });
   });
 })();

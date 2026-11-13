@@ -297,7 +297,9 @@ def _render_bullets_html(
     docstring). A missing/malformed/out-of-range tag just renders a
     plain bullet, same as before this feature existed.
 
-    Returns (html, any_citation_resolved) -- the second value tells
+    Returns ([(li_html, outlets), ...], any_citation_resolved) -- outlets
+    is how many distinct outlets the bullet cites (0 for a plain bullet),
+    which picks the Essentials; the second value tells
     _build_sections_html() whether this category needs the
     whole-section "Fonti di questa sezione" fallback."""
     items = []
@@ -332,16 +334,18 @@ def _render_bullets_html(
             # templates/digest.html (see core/interest.py); a vote on a
             # bullet counts for every article it cites.
             urls = _html_escape(json.dumps([a.get("url") or "" for a, _ in cited]), quote=True)
-            items.append(
+            outlets = {s for a, _ in cited for s in (a.get("sources") or [a.get("source", "")])}
+            items.append((
                 f'<li data-urls="{urls}"><details><summary>'
                 f"{bullet_html}</summary>"
                 f'<div class="sources">{sources_html}</div>'
                 "</details>"
-                '<span class="vote"><button data-v="1">👍</button><button data-v="-1">👎</button></span></li>'
-            )
+                '<span class="vote"><button data-v="1">👍</button><button data-v="-1">👎</button></span></li>',
+                len(outlets),
+            ))
         else:
-            items.append(f"<li>{bullet_html}</li>")
-    return "\n".join(items), any_resolved
+            items.append((f"<li>{bullet_html}</li>", 0))
+    return items, any_resolved
 
 
 def _render_category_sources_fallback_html(cat_articles: list[dict], cat_summaries: list[str]) -> str:
@@ -363,18 +367,63 @@ def _render_category_sources_fallback_html(cat_articles: list[dict], cat_summari
     )
 
 
+ESSENTIALS = 10  # at most this many stories in "⭐ Essentials" at the top of the page
+ESSENTIALS_PER_SECTION = 4
+
+
+def _pick_essentials(sections: list[tuple[str, list[tuple[str, int]], str]]) -> list[tuple[int, int]]:
+    """(section index, item index) of the day's Essentials: stories covered by
+    2+ outlets, most outlets first, ties in page order, at most
+    ESSENTIALS_PER_SECTION per section.
+    ponytail: outlet count is the only signal; weight by section votes once
+    articles store their reader section (votes are synced in core/interest.py)."""
+    candidates = sorted(
+        (-n, s, i) for s, (_, items, _) in enumerate(sections) for i, (_, n) in enumerate(items) if n >= 2
+    )
+    per_section: dict[int, int] = {}
+    picked = []
+    for _, s, i in candidates:
+        if per_section.get(s, 0) < ESSENTIALS_PER_SECTION:
+            per_section[s] = per_section.get(s, 0) + 1
+            picked.append((s, i))
+        if len(picked) == ESSENTIALS:
+            break
+    return picked
+
+
 def _build_sections_html(digest: dict, category_order: list[str]) -> str:
     ordered = [c for c in category_order if c in digest]
     ordered += [c for c in digest if c not in ordered]
-    parts = []
+    sections = []
     for category in ordered:
         section = digest[category]
         cat_articles = section.get("articles") or []
         cat_summaries = section.get("summaries") or []
-        bullets, any_resolved = _render_bullets_html(section["text"], cat_articles, cat_summaries, category)
-        if not bullets:
+        items, any_resolved = _render_bullets_html(section["text"], cat_articles, cat_summaries, category)
+        if not items:
             continue
         fallback = "" if any_resolved else _render_category_sources_fallback_html(cat_articles, cat_summaries)
+        sections.append((category, items, fallback))
+
+    # Essentials are moved, not copied, so each bullet (and its vote buttons) is on the page once.
+    picked = _pick_essentials(sections)
+    parts = []
+    if picked:
+        lis = []
+        for s, i in picked:
+            category, items, _ = sections[s]
+            li, n = items[i]
+            # data-section: a companion app files reads/votes under the bullet's real section, not "Essentials".
+            li = li.replace("<li ", f'<li data-section="{_html_escape(category, quote=True)}" ', 1)
+            label = f'<div class="ess-from">{_html_escape(category)} · {n} fonti</div>'
+            lis.append(li.replace(">", ">" + label, 1))
+        parts.append('<section class="category" id="essentials">\n<h2>⭐ Essentials</h2>\n<ul>\n'
+                     + "\n".join(lis) + "\n</ul>\n</section>")
+    moved = set(picked)
+    for s, (category, items, fallback) in enumerate(sections):
+        bullets = "\n".join(li for i, (li, _) in enumerate(items) if (s, i) not in moved)
+        if not bullets:
+            continue
         parts.append(
             f'<section class="category">\n<h2>{_html_escape(category)}</h2>\n'
             f"<ul>\n{bullets}\n</ul>\n{fallback}\n</section>"
@@ -394,7 +443,7 @@ def _build_archive_nav_html(archive_dates: list[str], current_date_iso: str) -> 
         return ""
     links = []
     for d in archive_dates:
-        label = d[5:]  # "MM-DD" -- compact enough for a horizontal strip
+        label = f"{d[8:]}-{d[5:7]}"  # "DD-MM" (Italian order) -- compact enough for a horizontal strip
         cls = ' class="current"' if d == current_date_iso else ""
         links.append(f'<a{cls} href="/{d}/">{label}</a>')
     return '<nav class="archive">\n' + "\n".join(links) + "\n</nav>"

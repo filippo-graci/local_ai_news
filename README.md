@@ -16,14 +16,14 @@ RSS feeds ─▶ ingestion ─▶ classification ─▶ interest filter ─▶ d
 
 | Stage | Module | What it does |
 |---|---|---|
-| Ingestion | `core/ingestion.py` | Reads the feeds in `sources.json` and extracts each article's text with trafilatura. |
+| Ingestion | `core/ingestion.py` | Reads the feeds in `sources.json` and extracts each article's text with trafilatura. Paywalled pages and teasers under 40 words are dropped. |
 | Classification | `core/classification.py` | Re-derives each article's topic and drops sport, weather, gossip and reviews. |
 | Interest filter | `core/interest.py` | One keep/drop question per article against `prompts/interest_filter.txt`. |
 | Dedup | `core/deduplication.py` | `bge-m3` embeddings merge same-day duplicates and skip stories already shown on earlier days (`history.db`). |
 | Votes | `core/interest.py` | 👍/👎 from the page train a small logistic regression that ranks articles (off until 200 votes). |
 | Sections | `core/interest.py` | Files each article under a section: Italy, Europe, United States, Geopolitics, Economy… |
 | Summaries | `core/summarizer.py` | One 1–2 sentence summary per article, then one bullet list per section, each bullet linked to its sources. |
-| Delivery | `core/delivery.py` | Renders `templates/digest.html` and deploys it with `wrangler pages deploy`. |
+| Delivery | `core/delivery.py` | Renders `templates/digest.html`, with up to 10 stories covered by 2+ outlets in a ⭐ Essentials section on top, and deploys it with `wrangler pages deploy`. |
 
 Every stage degrades instead of crashing: a dead feed, a failed model call or a
 failed deploy is logged and the run continues. `CHANGELOG.md` records what was
@@ -66,7 +66,8 @@ venv/bin/python main.py --dry-run --skip-gpu-check
 2. For the like/dislike buttons: `wrangler kv namespace create VOTES`, paste
    the id into `wrangler.toml`, then set a secret key with
    `wrangler pages secret put VOTE_KEY --project-name morning-brief`. Put the site URL and the same key under
-   `votes:` in `config.yaml`. The page asks for the key once per device.
+   `votes:` in `config.yaml`. The page's 👤 button asks for the key once per browser and keeps a
+   1-year login cookie (`functions/api/profile.js`).
 3. `venv/bin/python main.py` runs the whole pipeline and deploys.
 
 Leave `project_name` as `null` to only build the page locally.

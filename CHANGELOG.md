@@ -13,6 +13,42 @@ Where each part comes from:
 - **July 2026:** from `news_pipeline_v2.0_blueprint.md` (the v2.0 design,
   dated 19 July).
 
+## 13 Nov 2026 — ⭐ Essentials on the page itself
+
+**Essentials** (`core/delivery.py`, `templates/digest.html`, `test_essentials.py`)
+- Before: only a companion phone app showed Essentials, injecting it into the page; the
+  website and any browser had none.
+- Now: delivery moves up to 10 bullets covered by 2+ outlets into a "⭐ Essentials" section at
+  the top: most outlets first, ties in page order, at most 4 per section, each labelled with
+  its section and outlet count. Moved, not copied, so votes work as before; a section left
+  empty is dropped. No 2-outlet story that day, no section. Moved bullets carry their real
+  section in `data-section`.
+- Lost against the app's version: weighting by the sections you read and vote. Votes could
+  weight it once articles store their reader section.
+
+## 11 Nov 2026 — profile login for votes, full-text articles only
+
+**Profile login** (`functions/api/profile.js`, `functions/api/vote.js`, `templates/digest.html`)
+- Before: every browser asked for the vote key with `prompt()` on the first vote and kept it in
+  localStorage; inside an Android WebView the prompt never showed, so votes were lost.
+- Now: a "👤 Accedi per votare" button under the title. The password (still the `VOTE_KEY`
+  secret / `votes.key`) is asked once per browser or app; `/api/profile` answers with a 1-year
+  HttpOnly cookie holding an HMAC of the password (not the password). Votes use the cookie;
+  the morning sync keeps using the `x-key` header. "Esci" logs out; changing `VOTE_KEY` logs
+  out every device. A key left in localStorage by the old script logs in once and is deleted.
+- Checked against `wrangler pages dev` (login once, two votes, archive page, logout).
+
+**Full text only** (`core/ingestion.py`, `test_paywall.py`)
+- Cause: Repubblica's locked articles extract to a title and 0-51 words, and the summarizer
+  worked from that.
+- Fix: a page with schema.org `"isAccessibleForFree": false` is dropped before extraction, and
+  any article under `MIN_BODY_WORDS` (40) of extracted text is dropped (teaser, failed fetch).
+  On 11 Nov all 12 locked Repubblica articles had the marker; the free ones (206, 613 words)
+  had `true`. ANSA's shortest real stories are ~55 words. The per-source log line counts the
+  drops.
+
+**Archive strip** (`core/delivery.py`): dates shown as DD-MM instead of MM-DD.
+
 ## 19 Oct 2026 — world stories filed under Italy, reworded bullets
 
 Trigger: review of the 13–19 Oct digests. On 19 Oct the Italy section

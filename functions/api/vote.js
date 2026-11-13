@@ -1,9 +1,12 @@
 // Like/dislike storage for the digest page (see templates/digest.html and
 // core/interest.py). POST {urls: [...], v: 1|-1} records a vote per article
 // URL; GET returns {url: v} for the pipeline's morning sync. Both need the
-// x-key header to match the VOTE_KEY secret -- the site URL is public.
+// profile cookie (profile.js) or the x-key header matching the VOTE_KEY
+// secret -- the site URL is public.
+import { authorized } from "./profile.js";
+
 export async function onRequest({ request, env }) {
-  if (!env.VOTE_KEY || request.headers.get("x-key") !== env.VOTE_KEY) {
+  if (!(await authorized(request, env))) {
     return new Response("unauthorized", { status: 401 });
   }
   if (request.method === "POST") {
